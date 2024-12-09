@@ -5,6 +5,10 @@
 #include <cstdlib>
 #include <ctime>
 #include <stack>
+#include <algorithm>
+#include <random>
+#include <string>
+#include <functional>
 
 using namespace std;
 
@@ -12,21 +16,21 @@ struct Point {
     int x, y;
 };
 
-// Массивы для движения в 4 направлениях: вверх, вправо, вниз, влево
+// Направления для движения
 int dx[] = { -1, 0, 1, 0 };
 int dy[] = { 0, 1, 0, -1 };
 
-// Функция для отображения приветственного сообщения
 void showWelcomeMessage() {
     cout << "--------------------------------------------------" << endl;
-    cout << "Курсовая работа: Генерация лабиринта и поиск пути" << endl;
+    cout << "Курсовая работа" << endl;
+    cout << "Выполнил студент группы 23ВВВ4: Соснин Глеб" << endl;
+    cout << "Принял: доцент Юрова О.В." << endl;
     cout << "--------------------------------------------------" << endl;
     cout << "Добро пожаловать! Эта программа генерирует лабиринт," << endl;
-    cout << "ищет кратчайший путь и выводит координаты пути." << endl;
+    cout << "ищет кратчайший путь, загружает и сохраняет лабиринт." << endl;
     cout << "--------------------------------------------------" << endl;
 }
 
-// Проверка корректности входного размера лабиринта
 int getLabyrinthSize() {
     int N;
     while (true) {
@@ -44,28 +48,42 @@ int getLabyrinthSize() {
     return N;
 }
 
-// Генерация лабиринта
+// Генерация лабиринта 
 void generateMaze(vector<vector<char>>& maze, int N) {
     for (int i = 0; i < N; ++i) {
         for (int j = 0; j < N; ++j) {
-            if (i == 0 || j == 0 || i == N - 1 || j == N - 1) {
-                maze[i][j] = '#'; 
-            }
-            else {
-                maze[i][j] = '.';  
-            }
+            maze[i][j] = '#'; 
         }
     }
-    srand(static_cast<unsigned>(time(0))); 
-    for (int i = 1; i < N - 1; ++i) {
-        for (int j = 1; j < N - 1; ++j) {
-            if (rand() % 3 == 0) {
-                maze[i][j] = '#';  
-            }
-        }
-    }
-    maze[1][1] = '.';           
+
+    maze[1][1] = '.'; 
     maze[N - 2][N - 2] = '.'; 
+
+    random_device rd;
+    mt19937 gen(rd());
+
+    function<void(int, int)> carvePath = [&](int x, int y) {
+        vector<int> directions = { 0, 1, 2, 3 };
+        shuffle(directions.begin(), directions.end(), gen);
+
+        for (int i : directions) {
+            int nx = x + dx[i] * 2;
+            int ny = y + dy[i] * 2;
+            if (nx > 0 && ny > 0 && nx < N - 1 && ny < N - 1 && maze[nx][ny] == '#') {
+                maze[x + dx[i]][y + dy[i]] = '.';
+                maze[nx][ny] = '.';
+                carvePath(nx, ny);
+            }
+        }
+        };
+
+    carvePath(1, 1);
+
+    int x = 1, y = 1;
+    while (x != N - 2 || y != N - 2) {
+        if (x < N - 2) maze[++x][y] = '.';
+        if (y < N - 2) maze[x][++y] = '.';
+    }
 }
 
 // Вывод лабиринта на экран
@@ -78,7 +96,7 @@ void printMaze(const vector<vector<char>>& maze) {
     }
 }
 
-// Сохранение лабиринта в блокнот
+// Сохранение лабиринта в файл
 void saveMazeToFile(const vector<vector<char>>& maze, const string& filename) {
     ofstream outFile(filename);
     for (const auto& row : maze) {
@@ -88,9 +106,38 @@ void saveMazeToFile(const vector<vector<char>>& maze, const string& filename) {
         outFile << endl;
     }
     outFile.close();
+    cout << "Лабиринт сохранён в файл: " << filename << endl;
 }
 
-// Поиск пути методом BFS (поиск в ширину)
+// Загрузка лабиринта из файла
+bool loadMazeFromFile(vector<vector<char>>& maze, const string& filename) {
+    ifstream inFile(filename);
+    if (!inFile.is_open()) {
+        cout << "Ошибка: не удалось открыть файл: " << filename << endl;
+        return false;
+    }
+
+    vector<vector<char>> tempMaze;
+    string line;
+    while (getline(inFile, line)) {
+        vector<char> row;
+        for (char c : line) {
+            if (c != ' ' && c != '\n') row.push_back(c);
+        }
+        if (!row.empty()) tempMaze.push_back(row);
+    }
+    inFile.close();
+
+    if (tempMaze.size() != tempMaze[0].size()) {
+        cout << "Ошибка: лабиринт должен быть квадратным." << endl;
+        return false;
+    }
+
+    maze = tempMaze;
+    return true;
+}
+
+// Поиск пути 
 bool BFS(vector<vector<char>>& maze, int N, vector<vector<int>>& dist, vector<vector<Point>>& parent) {
     queue<Point> q;
     q.push({ 1, 1 });
@@ -124,10 +171,10 @@ void markPath(vector<vector<char>>& maze, vector<vector<Point>>& parent, int N) 
         maze[p.x][p.y] = '*';
         p = parent[p.x][p.y];
     }
-    maze[1][1] = '*';  
+    maze[1][1] = '*';
 }
 
-// Вывод координат найденного пути
+// Координаты пути
 void printPath(const vector<vector<Point>>& parent, int N) {
     vector<Point> path;
     Point p = { N - 2, N - 2 };
@@ -144,30 +191,72 @@ void printPath(const vector<vector<Point>>& parent, int N) {
     cout << endl;
 }
 
+// Главное меню
+void mainMenu() {
+    vector<vector<char>> maze;
+    while (true) {
+        cout << "\nМеню:\n1. Генерация нового лабиринта\n2. Сохранить лабиринт в файл\n3. Загрузить лабиринт из файла\n4. Найти путь\n5. Выход\nВаш выбор: ";
+        int choice;
+        cin >> choice;
+
+        if (choice == 1) {
+            int N = getLabyrinthSize();
+            maze.resize(N, vector<char>(N));
+            generateMaze(maze, N);
+            cout << "Сгенерированный лабиринт:" << endl;
+            printMaze(maze);
+        }
+        else if (choice == 2) {
+            if (maze.empty()) {
+                cout << "Сначала сгенерируйте лабиринт." << endl;
+                continue;
+            }
+            string filename;
+            cout << "Введите имя файла для сохранения: ";
+            cin >> filename;
+            saveMazeToFile(maze, filename);
+        }
+        else if (choice == 3) {
+            string filename;
+            cout << "Введите имя файла для загрузки: ";
+            cin >> filename;
+            if (loadMazeFromFile(maze, filename)) {
+                cout << "Лабиринт успешно загружен:" << endl;
+                printMaze(maze);
+            }
+        }
+        else if (choice == 4) {
+            if (maze.empty()) {
+                cout << "Лабиринт не загружен!" << endl;
+                continue;
+            }
+            int N = maze.size();
+            vector<vector<int>> dist(N, vector<int>(N, -1));
+            vector<vector<Point>> parent(N, vector<Point>(N));
+
+            if (BFS(maze, N, dist, parent)) {
+                markPath(maze, parent, N);
+                cout << "Лабиринт с отмеченным путём:" << endl;
+                printMaze(maze);
+                printPath(parent, N);
+            }
+            else {
+                cout << "Путь не найден." << endl;
+            }
+        }
+        else if (choice == 5) {
+            cout << "Выход из программы." << endl;
+            break;
+        }
+        else {
+            cout << "Неверный выбор, попробуйте снова." << endl;
+        }
+    }
+}
+
 int main() {
     setlocale(LC_ALL, "Russian");
-   
     showWelcomeMessage();
-
-    int N = getLabyrinthSize();
-    vector<vector<char>> maze(N, vector<char>(N));
-
-    generateMaze(maze, N);
-    cout << "Сгенерированный лабиринт:" << endl;
-    printMaze(maze);
-    saveMazeToFile(maze, "labyrinth.txt");
-
-    vector<vector<int>> dist(N, vector<int>(N, -1));
-    vector<vector<Point>> parent(N, vector<Point>(N));
-
-    if (BFS(maze, N, dist, parent)) {
-        markPath(maze, parent, N);
-        cout << "Лабиринт с отмеченным путем:" << endl;
-        printMaze(maze);
-        printPath(parent, N);
-    }
-    else {
-        cout << "Путь не найден." << endl;
-    }
+    mainMenu();
     return 0;
 }
